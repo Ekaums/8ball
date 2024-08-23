@@ -10,6 +10,8 @@
 #include <linux/version.h>
 
 #define DEV_NAME "8ball"
+#define MSG_LEN 80 /* Length of user message */
+#define NUM_CHOICES 7
 
 /* Driver prototypes */
 /* inode represents the underlying file, whereas file struct represents
@@ -46,6 +48,8 @@ enum {
 	CDEV_NOT_USED = 0,
 	CDEV_USED = 1,
 };
+
+static char msg[MSG_LEN]; /* Hold the user's question */
 
 /* Is device open? */
 static atomic_t dev_open = ATOMIC_INIT(CDEV_NOT_USED);
@@ -101,14 +105,6 @@ static void __exit ball_exit(void)
 /* Called when process opens device (creates new fd) */
 static int device_open(struct inode *, struct file *)
 {	
-	/* This static variable is given an initialization, which happens only once. Later calls will not reinitalize, as this value has lifetime duration (static)
-	 * If we were to instead:
-	 * static int a;
-	 * a = 0;
-	 * The second line is just a statement, which would set a to 0 every time!
-	 */
-	static int counter = 0;			
-
 	/* Performs atomic compare-and exchange:
 	 * 1. ptr to atomic variable (to modify)
 	 * 2. value you expect
@@ -121,8 +117,6 @@ static int device_open(struct inode *, struct file *)
 	if(atomic_cmpxchg(&dev_open, CDEV_NOT_USED, CDEV_USED))
 		return -EBUSY; /* Device is currently busy */
 	
-	pr_info("You have requested for the 8ball's presence %d times...\n", ++counter);
-
 	/* Increments a counter that represents how many devices are using this
 	 * device (used to prevent a rmmod when module is in use)
 	 */
@@ -136,8 +130,6 @@ static int device_release(struct inode *, struct file *)
 	/* Now ready for next caller */
 	atomic_set(&dev_open, CDEV_NOT_USED);
 	
-	pr_info("8ball is done...\n");
-
 	/* Decrement usage count */
 	module_put(THIS_MODULE);
 	
@@ -148,7 +140,57 @@ static int device_release(struct inode *, struct file *)
 static ssize_t device_read(struct file *filp, char __user *buffer, size_t length, loff_t *offset){
 	
 	int bytes_read = 0;
-	char *msg_ptr = "hehe that tickles :>\n";
+	int decision = 0;
+	char *msg_ptr;
+
+	for(int i = 0; i < MSG_LEN; i++){
+		decision += msg[i];
+	}
+
+	decision %= NUM_CHOICES;
+
+	switch(decision){
+	
+		case 0:
+			msg_ptr = "Yes.\n";
+			break;
+
+		case 1:
+			msg_ptr = "Without a doubt.\n";
+			break;
+
+		case 2:
+			msg_ptr = "You're better off not knowing.\n";
+			break;
+
+		case 3:
+			msg_ptr = "YES YES YES!!!\n";
+			break;
+
+		case 4:
+			msg_ptr = "Concentrate and ask again\n";
+			break;
+
+		case 5:
+			msg_ptr = "No.\n";
+			break;
+
+		case 6:
+			msg_ptr = "NO NO NO!!!\n";
+			break;
+
+		case 7:
+			msg_ptr = "Not with that attitude.\n";
+			break;
+
+		case 8:
+			msg_ptr = "That knowledge is kept even from me.\n";
+			break;
+
+		case 9:
+			msg_ptr = "Signs point to yes.\n";
+			break;
+	}
 
 	if(!*(msg_ptr + *offset)){ /* If we are at end of message already */
 		*offset = 0; /* Reset offset */
@@ -164,15 +206,28 @@ static ssize_t device_read(struct file *filp, char __user *buffer, size_t length
 	}
 
 	*offset += bytes_read;
-
 	return bytes_read;
 }
 
 /* Called when a process tries to write to file */
 static ssize_t device_write(struct file *filep, const char __user *buffer, size_t length, loff_t *offset)
 {
-	pr_info("Keep yapping man\n");
-	return length; 
+
+	if(*offset >= MSG_LEN){ /* If buffer is full */
+		*offset = 0; /* Reset buffer ptr */
+		return 0;
+	}
+
+	ssize_t len = min(length, (size_t)(MSG_LEN - *offset)); /* Read up to remaining buffer size */
+	
+	/* Read question from user */
+	if(copy_from_user(msg + *offset, buffer, len))
+		/* copy_from_user returns number of bytes that it could *not* read from user */
+		return -EFAULT;
+
+	*offset += len;
+
+	return len; 
 	/* The return value represents how many bytes were read. For the userspace
 	 * write() call, it will keep trying until it sends all data 
 	 * (looping infinitely if you return 0)
