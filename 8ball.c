@@ -11,7 +11,7 @@
 
 #define DEV_NAME "8ball"
 #define MSG_LEN 80 /* Length of user message */
-#define NUM_CHOICES 7
+#define NUM_CHOICES 10
 
 /* Driver prototypes */
 /* inode represents the underlying file, whereas file struct represents
@@ -150,7 +150,6 @@ static ssize_t device_read(struct file *filp, char __user *buffer, size_t length
 	decision %= NUM_CHOICES;
 
 	switch(decision){
-	
 		case 0:
 			msg_ptr = "Yes.\n";
 			break;
