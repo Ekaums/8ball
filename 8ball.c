@@ -26,12 +26,6 @@ static int device_release(struct inode *, struct file *);
 static ssize_t device_read(struct file *, char __user *, size_t, loff_t *);
 static ssize_t device_write(struct file *, const char __user *, size_t, loff_t *);
 
-/* Function declarations don't necessarily need the argument name: they wouldn't
- * be using them anyway. This might be useful to declare a function protoype
- * with descriptive arg names, but use more concise names in the definition 
- */
-
-/* Global variables are declared static, so they are only global to this file */
 static int major; 
 static struct class *cls;
 static struct file_operations fops = {
@@ -50,9 +44,16 @@ enum {
 };
 
 static char msg[MSG_LEN]; /* Hold the user's question */
+static atomic_t dev_open = ATOMIC_INIT(CDEV_NOT_USED); /* Is device open? */
 
-/* Is device open? */
-static atomic_t dev_open = ATOMIC_INIT(CDEV_NOT_USED);
+/* Used to set device file permissions */
+static char *set_devnode(const struct device *dev, umode_t *mode){
+	/* When device is created, if we want to set perms, set to rw */
+	if (mode)
+		*mode = 0666;
+	
+	return NULL;
+}
 
 static int __init ball_init(void)
 {
@@ -77,12 +78,15 @@ static int __init ball_init(void)
 #else 
 	cls = class_create(THIS_MODULE, DEV_NAME);
 #endif
+	
+	cls->devnode = set_devnode;
+
 	/* MKDEV is a macro that just bitshifts the major/minor values in an int.
 	 * This serves as the ID of this device (and why this macro is used for deletion)
 	*/
 	device_create(cls, NULL, MKDEV(major, 0), NULL, DEV_NAME);
 
-	/* Device file is created under /dev, and another file will be under /sys/class (symlink to /dev?) */
+	/* Device file is created under /dev*/
 	pr_info("Created device on /dev/%s\n", DEV_NAME);
 
     return 0;
@@ -143,6 +147,7 @@ static ssize_t device_read(struct file *filp, char __user *buffer, size_t length
 	int decision = 0;
 	char *msg_ptr;
 
+	/* 8ball makes random choice depending on user input */
 	for(int i = 0; i < MSG_LEN; i++){
 		decision += msg[i];
 	}
@@ -236,4 +241,6 @@ static ssize_t device_write(struct file *filep, const char __user *buffer, size_
 module_init(ball_init);
 module_exit(ball_exit);
 
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("Dual MIT/GPL");
+MODULE_AUTHOR("Ekaum");
+MODULE_DESCRIPTION("Simple module that creates an 8ball (/dev/8ball). Ask away!");  
